@@ -158,14 +158,25 @@ export class DragulaService {
 
   private handleModels({ name, drake, options }: Group): void {
     let dragElm: any;
+    let dragModel: any;
     let dragIndex: number;
     let dropIndex: number;
+    drake.on('dragend', (el:any) => {
+      this.setDragIndex(dragModel, -1);
+    });
+    drake.on('cancel', (el:any, source:any) => {
+      if (this.isVirtualizedDrag(dragModel)) {
+        this.removeElement(el); // element must be removed for ngFor to apply correctly
+      }
+    });
     drake.on('remove', (el: any, container: any, source: any) => {
       if (!drake.models) {
         return;
       }
       let sourceModel = drake.models[drake.containers.indexOf(source)];
-      sourceModel = sourceModel.slice(0); // clone it
+      if (sourceModel.slice) {
+       sourceModel = sourceModel.slice(0); // clone it
+      }
       const item = sourceModel.splice(dragIndex, 1)[0];
       this.dispatch$.next({
         event: EventTypes.RemoveModel,
@@ -178,18 +189,25 @@ export class DragulaService {
         return;
       }
       dragElm = el;
-      dragIndex = this.domIndexOf(el, source);
+      dragIndex = this.domIndexOf(el, source, drake);
+      dragModel = drake.models[drake.containers.indexOf(source)];
+      this.setDragIndex(dragModel, dragIndex);
     });
     drake.on('drop', (dropElm: any, target: Element, source: Element, sibling?: Element) => {
       if (!drake.models || !target) {
         return;
       }
-      dropIndex = this.domIndexOf(dropElm, target);
+      dropIndex = this.domIndexOf(dropElm, target, drake);
       let sourceModel = drake.models[drake.containers.indexOf(source)];
       let targetModel = drake.models[drake.containers.indexOf(target)];
       let item: any;
       if (target === source) {
-        sourceModel = sourceModel.slice(0);
+        if (this.isVirtualizedDrag(sourceModel)) {
+          this.removeElement(dropElm); // element must be removed for ngFor to apply correctly
+        }
+        if (sourceModel.slice) {
+          sourceModel = sourceModel.slice(0);
+        }
         item = sourceModel.splice(dragIndex, 1)[0];
         sourceModel.splice(dropIndex, 0, item);
         // this was true before we cloned and updated sourceModel,
@@ -197,7 +215,8 @@ export class DragulaService {
         targetModel = sourceModel;
       } else {
         const isCopying = dragElm !== dropElm;
-        item = sourceModel[dragIndex];
+        item = this.getItem(sourceModel, dragIndex);
+        
         if (isCopying) {
           if (!options.copyItem) {
             throw new Error("If you have enabled `copy` on a group, you must provide a `copyItem` function.");
@@ -206,17 +225,19 @@ export class DragulaService {
         }
 
         if (!isCopying) {
-          sourceModel = sourceModel.slice(0);
+          if (sourceModel.slice) {
+            sourceModel = sourceModel.slice(0);
+          }
           sourceModel.splice(dragIndex, 1);
         }
-        targetModel = targetModel.slice(0);
-        targetModel.splice(dropIndex, 0, item);
-        if (isCopying) {
-          try {
-            target.removeChild(dropElm);
-            // eslint-disable-next-line no-empty
-          } catch (e) {}
+
+        if (targetModel.slice) {
+          targetModel = targetModel.slice(0);
         }
+
+        targetModel.splice(dropIndex, 0, item);
+
+        this.removeElement(dropElm); // element must be removed for ngFor to apply correctly
       }
       this.dispatch$.next({
         event: EventTypes.DropModel,
@@ -242,9 +263,52 @@ export class DragulaService {
     AllEvents.forEach(emitter);
   }
 
-  private domIndexOf(child: any, parent: any): any {
-    if (parent) {
-      return Array.prototype.indexOf.call(parent.children, child);
+  private getItem(model: any | any[], index: number): any {
+    return this.isFormArrayLike(model) ? model.at(index) : model[index];
+  }
+
+  private isFormArrayLike(model: any | any[]): boolean {
+    return !!model.at && !!model.insert && !!model.removeAt;
+  }
+
+  private domIndexOf(child: any, parent: any, drake: any): any {
+    if (!parent) {
+      return;
     }
+
+    const domIndex = Array.prototype.indexOf.call(parent.children, child);
+
+    //our DOM elements might be virtualized so we need to get actual index from the model which will track it's offset
+    const model = drake.models[drake.containers.indexOf(parent)];
+    if (model && model.translateDomIndex) {
+      return model.translateDomIndex(domIndex);
+    }       
+
+    return domIndex;
+  }
+
+  /**
+   * @param model Must check for a virtual drag so we know to remove the dropElement (so we don't orphan it in the ngFor)
+   */
+  private isVirtualizedDrag(model: any) {
+    return model && model.virtualizedDrag;
+  }
+
+  /**
+   * Let the model know about the currently dragged index so it can update it's virtualizedDrag property.
+   * @param model 
+   * @param index 
+   */
+  private setDragIndex(model: any, index: number) {
+    if (model && model.setDragIndex) {
+      model.setDragIndex(index);
+    }
+  }
+
+  private removeElement(el: Element) {
+    try {
+      el.parentNode && el.parentNode.removeChild(el);
+    // eslint-disable-next-line no-empty
+    } catch (e) {}
   }
 }
