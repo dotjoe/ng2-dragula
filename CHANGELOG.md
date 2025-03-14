@@ -1,3 +1,12 @@
+## [5.1.1](https://github.com/dotjoe/ng2-dragula/compare/v5.1.0...v5.1.1) (2025-03-14)
+
+
+### Features
+
+* FormArray and virtual drag support ([c4cd637](https://github.com/dotjoe/ng2-dragula/commit/c4cd6377a9b0cfaaaceae4af6ec97fc1889b8742))
+
+
+
 # [5.1.0](https://github.com/valor-software/ng2-dragula/compare/v5.0.2...v5.1.0) (2024-04-15)
 
 
